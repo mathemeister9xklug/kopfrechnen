@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kopfrechnen Quiz</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        #quiz-container, #result-container {
+            background: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #progress {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 15px;
+        }
+        #question {
+            font-size: 1.5em;
+            text-align: center;
+            margin-bottom: 25px;
+            min-height: 50px;
+        }
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .option {
+            background: #ecf0f1;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2em;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .option:hover:not(.disabled) {
+            background: #e0e6e8;
+        }
+        .option.correct {
+            background: #d4edda !important;
+            border-color: #28a745 !important;
+            color: #155724;
+        }
+        .option.incorrect {
+            background: #f8d7da !important;
+            border-color: #dc3545 !important;
+            color: #721c24;
+        }
+        .disabled {
+            pointer-events: none;
+            cursor: not-allowed;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-top: 25px;
+            font-size: 1.1em;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #next-btn {
+            display: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .check { color: #28a745; font-weight: bold; font-size: 1.2em; }
+        .cross { color: #dc3545; font-weight: bold; font-size: 1.2em; }
+        
+        /* Lade-Anzeige für MathJax */
+        #loading {
+            text-align: center;
+            font-size: 1.2em;
+            color: #7f8c8d;
+        }
+    </style>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['\\(', '\\)']] },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady().then(() => {
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('quiz-container').style.display = 'block';
+                        startQuiz();
+                    });
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+    <h1>Kopfrechnen Training</h1>
+    
+    <div id="loading">Lade Mathe-Schriftarten (MathJax)...</div>
+
+    <div id="quiz-container" style="display: none;">
+        <div id="progress">Frage 1 von 20</div>
+        <div id="question"></div>
+        <div class="options-grid" id="options"></div>
+        <button id="next-btn" onclick="nextQuestion()">Nächste Frage</button>
+    </div>
+
+    <div id="result-container" style="display: none;">
+        <h2>Ergebnisübersicht</h2>
+        <p id="final-score"></p>
+        <table id="result-table">
+            <thead>
+                <tr>
+                    <th>Nr.</th>
+                    <th>Aufgabe</th>
+                    <th>Deine Antwort</th>
+                    <th>Korrekte Antwort</th>
+                    <th>Ergebnis</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <button onclick="startQuiz()">Neues Quiz starten</button>
+    </div>
+
+    <script>
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let userResults = [];
+
+        // Hilfsfunktion: Zufallszahl zwischen min und max (optional ohne 0)
+        function getRandomInt(min, max, avoidZero = true) {
+            let val;
+            do {
+                val = Math.floor(Math.random() * (max - min + 1)) + min;
+            } while (avoidZero && val === 0);
+            return val;
+        }
+
+        // Hilfsfunktion: Formatiert Zahlen (Negative Zahlen bekommen Klammern)
+        function formatNum(num) {
+            return num < 0 ? `(${num})` : num;
+        }
+
+        // Generiert 4 einzigartige Antwortmöglichkeiten
+        function generateOptions(correctAnswer) {
+            let options = new Set([correctAnswer]);
+            while(options.size < 4) {
+                let r = Math.random();
+                let distractor;
+                if (r < 0.2) distractor = -correctAnswer;
+                else if (r < 0.4) distractor = correctAnswer + getRandomInt(-3, 3, true);
+                else if (r < 0.6) distractor = correctAnswer + 10;
+                else distractor = correctAnswer + getRandomInt(-15, 15, true);
+                options.add(distractor);
+            }
+            let optionsArray = Array.from(options);
+            // Mischen
+            return optionsArray.sort(() => Math.random() - 0.5);
+        }
+
+        function generateQuizData() {
+            questions = [];
+            
+            // Fragen 1-10: Einfach (2 Zahlen, +, -, *, /)
+            const ops = ['+', '-', '*', '/'];
+            for(let i = 0; i < 10; i++) {
+                let op = ops[Math.floor(Math.random() * ops.length)];
+                let a, b, tex, ans;
+                
+                if (op === '+') {
+                    a = getRandomInt(-20, 20); b = getRandomInt(-20, 20);
+                    ans = a + b; tex = `${a} + ${formatNum(b)}`;
+                } else if (op === '-') {
+                    a = getRandomInt(-20, 20); b = getRandomInt(-20, 20);
+                    ans = a - b; tex = `${a} - ${formatNum(b)}`;
+                } else if (op === '*') {
+                    a = getRandomInt(-10, 10); b = getRandomInt(-10, 10);
+                    ans = a * b; tex = `${a} \\cdot ${formatNum(b)}`;
+                } else if (op === '/') {
+                    b = getRandomInt(-10, 10); 
+                    ans = getRandomInt(-10, 10); // das ist das Ergebnis (c)
+                    a = b * ans; // Garantiert glatte Teilung
+                    tex = `${a} : ${formatNum(b)}`;
+                }
+                questions.push({ tex: `\\( ${tex} = \\; ? \\)`, rawTex: tex, correct: ans, options: generateOptions(ans) });
+            }
+
+            // Fragen 11-15: Mittel (3 Zahlen, Punkt vor Strich)
+            for(let i = 0; i < 5; i++) {
+                let a = getRandomInt(-10, 10);
+                let b = getRandomInt(-10, 10);
+                let c = getRandomInt(-10, 10);
+                let type = Math.floor(Math.random() * 3);
+                let tex, ans;
+                
+                if (type === 0) { // a + b * c
+                    ans = a + b * c;
+                    tex = `${a} + ${formatNum(b)} \\cdot ${formatNum(c)}`;
+                } else if (type === 1) { // a * b - c
+                    ans = a * b - c;
+                    tex = `${a} \\cdot ${formatNum(b)} - ${formatNum(c)}`;
+                } else { // a - b + c
+                    ans = a - b + c;
+                    tex = `${a} - ${formatNum(b)} + ${formatNum(c)}`;
+                }
+                questions.push({ tex: `\\( ${tex} = \\; ? \\)`, rawTex: tex, correct: ans, options: generateOptions(ans) });
+            }
+
+            // Fragen 16-20: Schwer (Klammern)
+            for(let i = 0; i < 5; i++) {
+                let a = getRandomInt(-10, 10);
+                let b = getRandomInt(-10, 10);
+                let c = getRandomInt(-10, 10);
+                let type = Math.floor(Math.random() * 2);
+                let tex, ans;
+                
+                if (type === 0) { // (a + b) * c
+                    ans = (a + b) * c;
+                    let inner = `${a} + ${formatNum(b)}`;
+                    tex = `(${inner}) \\cdot ${formatNum(c)}`;
+                } else { // a * (b - c)
+                    ans = a * (b - c);
+                    let inner = `${b} - ${formatNum(c)}`;
+                    tex = `${a} \\cdot (${inner})`;
+                }
+                questions.push({ tex: `\\( ${tex} = \\; ? \\)`, rawTex: tex, correct: ans, options: generateOptions(ans) });
+            }
+        }
+
+        function startQuiz() {
+            generateQuizData();
+            currentQuestionIndex = 0;
+            score = 0;
+            userResults = [];
+            
+            document.getElementById('result-container').style.display = 'none';
+            document.getElementById('quiz-container').style.display = 'block';
+            
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            document.getElementById('next-btn').style.display = 'none';
+            let q = questions[currentQuestionIndex];
+            
+            document.getElementById('progress').innerText = `Frage ${currentQuestionIndex + 1} von 20`;
+            document.getElementById('question').innerHTML = q.tex;
+            
+            let optionsHtml = '';
+            q.options.forEach((opt, index) => {
+                optionsHtml += `<div class="option" id="opt-${index}" onclick="selectAnswer(${index}, ${opt})">\\( ${opt} \\)</div>`;
+            });
+            document.getElementById('options').innerHTML = optionsHtml;
+
+            // MathJax anweisen, die neuen Formeln zu rendern
+            MathJax.typesetPromise();
+        }
+
+        function selectAnswer(selectedIndex, selectedValue) {
+            let q = questions[currentQuestionIndex];
+            let isCorrect = (selectedValue === q.correct);
+            
+            if (isCorrect) score++;
+
+            // Speichere Ergebnis für die Übersicht
+            userResults.push({
+                question: q.rawTex,
+                userAnswer: selectedValue,
+                correctAnswer: q.correct,
+                isCorrect: isCorrect
+            });
+
+            // Alle Buttons deaktivieren
+            let optionsDivs = document.querySelectorAll('.option');
+            optionsDivs.forEach(div => div.classList.add('disabled'));
+
+            // Farben anwenden
+            if (isCorrect) {
+                document.getElementById(`opt-${selectedIndex}`).classList.add('correct');
+            } else {
+                document.getElementById(`opt-${selectedIndex}`).classList.add('incorrect');
+                // Richtige Antwort grün aufleuchten lassen
+                q.options.forEach((opt, idx) => {
+                    if (opt === q.correct) {
+                        document.getElementById(`opt-${idx}`).classList.add('correct');
+                    }
+                });
+            }
+
+            document.getElementById('next-btn').style.display = 'block';
+        }
+
+        function nextQuestion() {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < questions.length) {
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+
+        function showResults() {
+            document.getElementById('quiz-container').style.display = 'none';
+            document.getElementById('result-container').style.display = 'block';
+            
+            document.getElementById('final-score').innerHTML = `Du hast <strong>${score}</strong> von 20 Fragen richtig beantwortet.`;
+
+            let tbody = document.querySelector('#result-table tbody');
+            tbody.innerHTML = '';
+            
+            userResults.forEach((res, index) => {
+                let row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>\\( ${res.question} \\)</td>
+                    <td>${res.userAnswer}</td>
+                    <td>${res.correctAnswer}</td>
+                    <td>${res.isCorrect ? '<span class="check">✔</span>' : '<span class="cross">✘</span>'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            // MathJax für die Tabelle triggern
+            MathJax.typesetPromise();
+        }
+    </script>
+</body>
+</html>
