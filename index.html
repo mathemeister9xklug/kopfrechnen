@@ -101,7 +101,6 @@
         .check { color: #28a745; font-weight: bold; font-size: 1.2em; }
         .cross { color: #dc3545; font-weight: bold; font-size: 1.2em; }
         
-        /* Lade-Anzeige für MathJax */
         #loading {
             text-align: center;
             font-size: 1.2em;
@@ -162,7 +161,6 @@
         let score = 0;
         let userResults = [];
 
-        // Hilfsfunktion: Zufallszahl zwischen min und max (optional ohne 0)
         function getRandomInt(min, max, avoidZero = true) {
             let val;
             do {
@@ -171,94 +169,124 @@
             return val;
         }
 
-        // Hilfsfunktion: Formatiert Zahlen (Negative Zahlen bekommen Klammern)
         function formatNum(num) {
             return num < 0 ? `(${num})` : num;
         }
 
-        // Generiert 4 einzigartige Antwortmöglichkeiten
-        function generateOptions(correctAnswer) {
-            let options = new Set([correctAnswer]);
-            while(options.size < 4) {
-                let r = Math.random();
-                let distractor;
-                if (r < 0.2) distractor = -correctAnswer;
-                else if (r < 0.4) distractor = correctAnswer + getRandomInt(-3, 3, true);
-                else if (r < 0.6) distractor = correctAnswer + 10;
-                else distractor = correctAnswer + getRandomInt(-15, 15, true);
-                options.add(distractor);
+        // Füllt 4 Antwortmöglichkeiten basierend auf intelligenten Distraktoren
+        function getSmartOptions(correct, distractorArray) {
+            let options = [correct];
+            
+            // Füge spezifische Distraktoren hinzu (vermeide Duplikate und die korrekte Antwort)
+            for (let d of distractorArray) {
+                if (options.length < 4 && !options.includes(d)) {
+                    options.push(d);
+                }
             }
-            let optionsArray = Array.from(options);
-            // Mischen
-            return optionsArray.sort(() => Math.random() - 0.5);
+            
+            // Falls nicht genug einzigartige Distraktoren entstanden sind, mit leichten Fehlern auffüllen
+            let fallbacks = [correct + 1, correct - 1, correct + 10, correct - 10, -correct, correct + 2];
+            let fIdx = 0;
+            while(options.length < 4) {
+                if (!options.includes(fallbacks[fIdx])) {
+                    options.push(fallbacks[fIdx]);
+                }
+                fIdx++;
+            }
+            
+            return options.sort(() => Math.random() - 0.5);
         }
 
         function generateQuizData() {
             questions = [];
             
-            // Fragen 1-10: Einfach (2 Zahlen, +, -, *, /)
+            // Fragen 1-10: Einfach
             const ops = ['+', '-', '*', '/'];
             for(let i = 0; i < 10; i++) {
                 let op = ops[Math.floor(Math.random() * ops.length)];
-                let a, b, tex, ans;
+                let a, b, tex, ans, distractors;
                 
                 if (op === '+') {
                     a = getRandomInt(-20, 20); b = getRandomInt(-20, 20);
                     ans = a + b; tex = `${a} + ${formatNum(b)}`;
+                    distractors = [a - b, -(a + b), b - a];
                 } else if (op === '-') {
                     a = getRandomInt(-20, 20); b = getRandomInt(-20, 20);
                     ans = a - b; tex = `${a} - ${formatNum(b)}`;
+                    distractors = [a + b, b - a, -(a - b)];
                 } else if (op === '*') {
                     a = getRandomInt(-10, 10); b = getRandomInt(-10, 10);
                     ans = a * b; tex = `${a} \\cdot ${formatNum(b)}`;
+                    distractors = [-ans, a + b, -(a + b)];
                 } else if (op === '/') {
                     b = getRandomInt(-10, 10); 
-                    ans = getRandomInt(-10, 10); // das ist das Ergebnis (c)
-                    a = b * ans; // Garantiert glatte Teilung
+                    ans = getRandomInt(-10, 10);
+                    a = b * ans; 
                     tex = `${a} : ${formatNum(b)}`;
+                    distractors = [-ans, a * b, ans + 1];
                 }
-                questions.push({ tex: `\\( ${tex} = \\; ? \\)`, rawTex: tex, correct: ans, options: generateOptions(ans) });
+                questions.push({ 
+                    tex: `\\( ${tex} = \\; ? \\)`, 
+                    rawTex: tex, 
+                    correct: ans, 
+                    options: getSmartOptions(ans, distractors) 
+                });
             }
 
-            // Fragen 11-15: Mittel (3 Zahlen, Punkt vor Strich)
+            // Fragen 11-15: Mittel (Punkt vor Strich Fehler)
             for(let i = 0; i < 5; i++) {
                 let a = getRandomInt(-10, 10);
                 let b = getRandomInt(-10, 10);
                 let c = getRandomInt(-10, 10);
                 let type = Math.floor(Math.random() * 3);
-                let tex, ans;
+                let tex, ans, distractors;
                 
                 if (type === 0) { // a + b * c
                     ans = a + b * c;
                     tex = `${a} + ${formatNum(b)} \\cdot ${formatNum(c)}`;
+                    distractors = [(a + b) * c, a - (b * c), -(a + b * c)];
                 } else if (type === 1) { // a * b - c
                     ans = a * b - c;
                     tex = `${a} \\cdot ${formatNum(b)} - ${formatNum(c)}`;
+                    distractors = [a * (b - c), -(a * b - c), (a * b) + c];
                 } else { // a - b + c
                     ans = a - b + c;
                     tex = `${a} - ${formatNum(b)} + ${formatNum(c)}`;
+                    distractors = [a - (b + c), b - a + c, -(a - b + c)];
                 }
-                questions.push({ tex: `\\( ${tex} = \\; ? \\)`, rawTex: tex, correct: ans, options: generateOptions(ans) });
+                questions.push({ 
+                    tex: `\\( ${tex} = \\; ? \\)`, 
+                    rawTex: tex, 
+                    correct: ans, 
+                    options: getSmartOptions(ans, distractors) 
+                });
             }
 
-            // Fragen 16-20: Schwer (Klammern)
+            // Fragen 16-20: Schwer (Klammer ignoriert Fehler)
             for(let i = 0; i < 5; i++) {
                 let a = getRandomInt(-10, 10);
                 let b = getRandomInt(-10, 10);
                 let c = getRandomInt(-10, 10);
                 let type = Math.floor(Math.random() * 2);
-                let tex, ans;
+                let tex, ans, distractors;
                 
                 if (type === 0) { // (a + b) * c
                     ans = (a + b) * c;
                     let inner = `${a} + ${formatNum(b)}`;
                     tex = `(${inner}) \\cdot ${formatNum(c)}`;
+                    distractors = [a + b * c, -(a + b) * c, (a - b) * c];
                 } else { // a * (b - c)
                     ans = a * (b - c);
                     let inner = `${b} - ${formatNum(c)}`;
                     tex = `${a} \\cdot (${inner})`;
+                    distractors = [a * b - c, a * (c - b), -a * (b - c)];
                 }
-                questions.push({ tex: `\\( ${tex} = \\; ? \\)`, rawTex: tex, correct: ans, options: generateOptions(ans) });
+                questions.push({ 
+                    tex: `\\( ${tex} = \\; ? \\)`, 
+                    rawTex: tex, 
+                    correct: ans, 
+                    options: getSmartOptions(ans, distractors) 
+                });
             }
         }
 
@@ -287,7 +315,6 @@
             });
             document.getElementById('options').innerHTML = optionsHtml;
 
-            // MathJax anweisen, die neuen Formeln zu rendern
             MathJax.typesetPromise();
         }
 
@@ -297,7 +324,6 @@
             
             if (isCorrect) score++;
 
-            // Speichere Ergebnis für die Übersicht
             userResults.push({
                 question: q.rawTex,
                 userAnswer: selectedValue,
@@ -305,16 +331,13 @@
                 isCorrect: isCorrect
             });
 
-            // Alle Buttons deaktivieren
             let optionsDivs = document.querySelectorAll('.option');
             optionsDivs.forEach(div => div.classList.add('disabled'));
 
-            // Farben anwenden
             if (isCorrect) {
                 document.getElementById(`opt-${selectedIndex}`).classList.add('correct');
             } else {
                 document.getElementById(`opt-${selectedIndex}`).classList.add('incorrect');
-                // Richtige Antwort grün aufleuchten lassen
                 q.options.forEach((opt, idx) => {
                     if (opt === q.correct) {
                         document.getElementById(`opt-${idx}`).classList.add('correct');
@@ -355,7 +378,6 @@
                 tbody.appendChild(row);
             });
 
-            // MathJax für die Tabelle triggern
             MathJax.typesetPromise();
         }
     </script>
